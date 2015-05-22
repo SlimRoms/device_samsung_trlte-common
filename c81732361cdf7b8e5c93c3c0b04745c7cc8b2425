@@ -1,0 +1,27 @@
+{
+  "comments": [
+    {
+      "key": {
+        "uuid": "fa3479d7_387c7172",
+        "filename": "overlay/frameworks/base/core/res/res/values/config.xml",
+        "patchSetId": 4
+      },
+      "lineNbr": 402,
+      "author": {
+        "id": 1000043
+      },
+      "writtenOn": "2015-05-22T20:07:13Z",
+      "side": 1,
+      "message": "Doesn\u0027t exist in Slim",
+      "range": {
+        "startLine": 402,
+        "startChar": 0,
+        "endLine": 402,
+        "endChar": 62
+      },
+      "revId": "c81732361cdf7b8e5c93c3c0b04745c7cc8b2425",
+      "serverId": "f8201d64-d729-4630-b91d-5f8be02869f0",
+      "unresolved": false
+    }
+  ]
+}
