@@ -97,11 +97,18 @@ static int check_vendor_module()
     return rv;
 }
 
-static bool is4k(android::CameraParameters &params) {
+static bool is4kVideo(android::CameraParameters &params) {
     int video_width, video_height;
     params.getVideoSize(&video_width, &video_height);
-
+    ALOGV("%s : VideoSize is %x", __FUNCTION__, video_width*video_height);
     return video_width*video_height > 1920*1080;
+}
+
+static bool is480Preview(android::CameraParameters &params) {
+    int video_width, video_height;
+    params.getPreviewSize(&video_width, &video_height);
+    ALOGV("%s : PreviewSize is %x", __FUNCTION__, video_width*video_height);
+    return video_width*video_height == 720*480;
 }
 
 static char *camera_fixup_getparams(int __attribute__((unused)) id,
@@ -115,20 +122,25 @@ static char *camera_fixup_getparams(int __attribute__((unused)) id,
     params.dump();
 #endif
 
-    if (id == 0 && is4k(params)) {
-        params.set("preview-format", "yuv420sp");
-    }
+    //Hide nv12-venus from Android.
+    if (strcmp (params.getPreviewFormat(), "nv12-venus") == 0)
+          params.set("preview-format", "yuv420sp");
 
-    /* If the vendor has HFR values but doesn't also expose that
-     * this can be turned off, fixup the params to tell the Camera
-     * that it really is okay to turn it off.
-     */
-
-    const char *hfrValues = params.get("video-hfr-values");
-    if (hfrValues && *hfrValues && ! strstr(hfrValues, "off")) {
-        char tmp[strlen(hfrValues) + 4 + 1];
-        sprintf(tmp, "%s,off", hfrValues);
-        params.set("video-hfr-values", tmp);
+    int minfps, maxfps;
+    params.getPreviewFpsRange(&minfps, &maxfps);
+    if (minfps >= 60000)
+    {
+	params.set("preview-frame-rate-values", "15,24,30,60,120");
+        if (minfps >= 120000)
+	{
+	     params.set("fast-fps-mode", "2");
+             params.set("preview-frame-rate", "120");
+	}
+	else
+	{
+	     params.set("fast-fps-mode", "1");
+	     params.set("preview-frame-rate", "60");
+	}
     }
 
     android::String8 strParams = params.flatten();
@@ -152,15 +164,28 @@ static char *camera_fixup_setparams(int id, const char *settings)
     params.dump();
 #endif
 
-    if (is4k(params)) {
-        /* Use nv12-venus for performance reasons */
-        params.setPreviewFormat("nv12-venus");
-    } else {
-        params.setPreviewFormat("yuv420sp");
+    if (is480Preview(params)) {
+        ALOGV("%s: 480p preview detected, switching preview format to yuv420p", __FUNCTION__);
+        params.set("preview-format", "yuv420p");
     }
-    if (id == 1) {
-        params.set("preview-size", "1920x1080");
+
+    int minfps, maxfps;
+    params.getPreviewFpsRange(&minfps, &maxfps);
+    if (minfps >= 60000)
+    {
+	params.set("preview-frame-rate-values", "15,24,30,60,120");
+        if (minfps >= 120000)
+	{
+	     params.set("fast-fps-mode", "2");
+             params.set("preview-frame-rate", "120");
+	}
+	else
+	{
+	     params.set("fast-fps-mode", "1");
+	     params.set("preview-frame-rate", "60");
+	}
     }
+
     android::String8 strParams = params.flatten();
 
     if (fixed_set_params[id])
@@ -179,7 +204,8 @@ static char *camera_fixup_setparams(int id, const char *settings)
 /*******************************************************************
  * implementation of camera_device_ops functions
  *******************************************************************/
-
+static char *camera_get_parameters(struct camera_device *device);
+static int camera_set_parameters(struct camera_device *device, const char *params);
 static int camera_set_preview_window(struct camera_device *device,
         struct preview_stream_ops *window)
 {
@@ -289,8 +315,6 @@ static int camera_store_meta_data_in_buffers(struct camera_device *device,
     return VENDOR_CALL(device, store_meta_data_in_buffers, enable);
 }
 
-static char *camera_get_parameters(struct camera_device *device);
-static int camera_set_parameters(struct camera_device *device, const char *params);
 static int camera_start_recording(struct camera_device *device)
 {
     ALOGV("%s->%08X->%08X", __FUNCTION__, (uintptr_t)device,
@@ -303,10 +327,10 @@ static int camera_start_recording(struct camera_device *device)
     parameters.unflatten(android::String8(camera_get_parameters(device)));
     parameters.set("dis", "disable");
     parameters.set("zsl", "off");
-    if (CAMERA_ID(device) == 0 && is4k(parameters)) {
+
+    if (is4kVideo(parameters)) {
+        ALOGV("%s: UHD detected, switching preview-format to nv12-venus", __FUNCTION__);
         parameters.set("preview-format", "nv12-venus");
-    } else if (CAMERA_ID(device) == 0 && !is4k(parameters)) {
-        parameters.set("preview-size", "1920x1080");
     }
 
     camera_set_parameters(device, strdup(parameters.flatten().string()));
